@@ -1,0 +1,6 @@
+classes=6
+train=/data2/data2/zewei/data/RipData/cv_5_folder/train_5.json
+valid=/data2/data2/zewei/data/RipData/cv_5_folder/val_5.json
+backup=backup/
+names=data/rip/rip.names
+root=/data2/data2/zewei/data/RipData/RipTrainingAllData/

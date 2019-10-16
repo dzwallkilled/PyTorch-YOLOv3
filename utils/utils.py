@@ -9,6 +9,58 @@ from torch.autograd import Variable
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import subprocess
+import os
+
+
+def get_available_device(num_gpus=1, memory_used=100, memory_available=-1, gpus=[]):
+    """
+    Retrives the resources and return the available devices according to the requirement
+    :param num_gpus: int, num of gpus to be used
+    :param memory_used: int Mb, gpus with memory used less than this value, negative value ignores this option
+    :param memory_available: int Mb, gpus with memory available larger than this value, negative value ignores this option
+    :param gpus: list(int), the gpu range constrained, e.g. gpus=[0, 1, 2], allocating memory only to these gpus
+    :return: torch.device('cuda') or torch.device('cpu')
+    """
+    print(f'Requirement: {num_gpus} GPUs with >{memory_available}M available and <{memory_used}M used')
+    if memory_used < 0:
+        memory_used = 1e10
+    if memory_available < 0:
+        memory_available = 1e10
+    result = subprocess.check_output(
+        [
+            'nvidia-smi', '--query-gpu=memory.used',
+            '--format=csv,nounits,noheader'
+        ], encoding='utf-8')
+    gpu_memory_used = [int(x) for x in result.strip().split('\n')]
+
+    result2 = subprocess.check_output(
+        [
+            'nvidia-smi', '--query-gpu=memory.free',
+            '--format=csv,nounits,noheader'
+        ], encoding='utf-8')
+    gpu_memory_free = [int(x) for x in result2.strip().split('\n')]
+
+    free_gpus = []
+    for gpu, (mem_used, mem_free) in enumerate(zip(gpu_memory_used, gpu_memory_free)):
+        if mem_used < memory_used or mem_free > memory_available:
+            free_gpus.append(gpu)
+
+    if gpus:
+        free_gpus = [gpu for gpu in free_gpus if gpu in gpus]
+
+    if num_gpus == 0:
+        print(f'Allocating memory into CPU.')
+        return torch.device('cpu')
+    elif len(free_gpus) < num_gpus:
+        print(f"Not enough GPUs available. {num_gpus} required but {len(free_gpus)} available.")
+        print(f"Allocating memory into CPU.")
+        return torch.device('cpu')
+    else:
+        gpus = ','.join(str(gpu) for gpu in free_gpus[:num_gpus])
+        os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(gpu) for gpu in free_gpus[:num_gpus])
+        print(f'Allocating memory into GPU: {gpus}')
+        return torch.device('cuda')
 
 
 def to_cpu(tensor):
@@ -298,6 +350,11 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
     gw, gh = gwh.t()
     gi, gj = gxy.long().t()
     # Set masks
+    # obj_mask[b, best_n, gj, gi] = 1
+    # noobj_mask[b, best_n, gj, gi] = 0
+    ## replacing above codes to avoid cuda trigged error
+    gi = torch.clamp(gi, 0, noobj_mask.size()[2] - 1)
+    gj = torch.clamp(gj, 0, noobj_mask.size()[3] - 1)
     obj_mask[b, best_n, gj, gi] = 1
     noobj_mask[b, best_n, gj, gi] = 0
 
@@ -319,3 +376,9 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
 
     tconf = obj_mask.float()
     return iou_scores, class_mask, obj_mask, noobj_mask, tx, ty, tw, th, tcls, tconf
+
+
+if __name__ == '__main__':
+    device = get_available_device(num_gpus=0, memory_used=-1)
+    a = torch.zeros((128, 128, 128, 128), dtype=torch.float64).to(device)
+    pass

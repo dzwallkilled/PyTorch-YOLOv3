@@ -24,33 +24,54 @@ import torch.optim as optim
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--gpus", type=int, default=1, help="the num of GPUs to be used")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
+    parser.add_argument("--batch_size", type=int, default=16, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
     parser.add_argument("--data_config", type=str, default="config/coco.data", help="path to data config file")
     parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
-    parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
-    parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
+    parser.add_argument("--print_freq", type=int, default=10, help="print frequency")
+    parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model weights")
+    parser.add_argument("--evaluation_interval", type=int, default=10, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
+    parser.add_argument("--output", type=str, default='output', help="the output folder")
     opt = parser.parse_args()
+    opt.checkpoints = os.path.join(opt.output, "checkpoints")
+    opt.logs = os.path.join(opt.output, "logs")
     print(opt)
 
-    logger = Logger("logs")
+    os.makedirs(opt.output, exist_ok=True)
+    os.makedirs(opt.checkpoints, exist_ok=True)
+    os.makedirs(opt.logs, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    os.makedirs("output", exist_ok=True)
-    os.makedirs("checkpoints", exist_ok=True)
+    logger = Logger(opt.logs)
+    device = get_available_device(opt.gpus)
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
+    data_root = data_config["root"]
     train_path = data_config["train"]
     valid_path = data_config["valid"]
     class_names = load_classes(data_config["names"])
+    # Get dataloader
+    if 'rip' in opt.data_config:
+        dataset = JSONDataset(data_root, train_path, remove_images_without_annotations=True,
+                              augment=True, multiscale=opt.multiscale_training)
+    else:
+        dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
+
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=opt.batch_size,
+        shuffle=False,
+        num_workers=opt.n_cpu,
+        pin_memory=True,
+        collate_fn=dataset.collate_fn,
+    )
 
     # Initiate model
     model = Darknet(opt.model_def).to(device)
@@ -62,17 +83,6 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(opt.pretrained_weights))
         else:
             model.load_darknet_weights(opt.pretrained_weights)
-
-    # Get dataloader
-    dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=opt.batch_size,
-        shuffle=True,
-        num_workers=opt.n_cpu,
-        pin_memory=True,
-        collate_fn=dataset.collate_fn,
-    )
 
     optimizer = torch.optim.Adam(model.parameters())
 
@@ -113,37 +123,38 @@ if __name__ == "__main__":
             # ----------------
             #   Log progress
             # ----------------
+            if (batch_i % opt.print_freq == 0 and batch_i != 0) \
+                    or batch_i == len(dataloader) - 1:
+                log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
-            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
+                metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
 
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
+                # Log metrics at each YOLO layer
+                for i, metric in enumerate(metrics):
+                    formats = {m: "%.6f" for m in metrics}
+                    formats["grid_size"] = "%2d"
+                    formats["cls_acc"] = "%.2f%%"
+                    row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                    metric_table += [[metric, *row_metrics]]
 
-            # Log metrics at each YOLO layer
-            for i, metric in enumerate(metrics):
-                formats = {m: "%.6f" for m in metrics}
-                formats["grid_size"] = "%2d"
-                formats["cls_acc"] = "%.2f%%"
-                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-                metric_table += [[metric, *row_metrics]]
+                    # Tensorboard logging
+                    tensorboard_log = []
+                    for j, yolo in enumerate(model.yolo_layers):
+                        for name, metric in yolo.metrics.items():
+                            if name != "grid_size":
+                                tensorboard_log += [(f"{name}_{j + 1}", metric)]
+                    tensorboard_log += [("loss", loss.item())]
+                    logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
-                # Tensorboard logging
-                tensorboard_log = []
-                for j, yolo in enumerate(model.yolo_layers):
-                    for name, metric in yolo.metrics.items():
-                        if name != "grid_size":
-                            tensorboard_log += [(f"{name}_{j+1}", metric)]
-                tensorboard_log += [("loss", loss.item())]
-                logger.list_of_scalars_summary(tensorboard_log, batches_done)
+                log_str += AsciiTable(metric_table).table
+                log_str += f"\nTotal loss {loss.item()}"
 
-            log_str += AsciiTable(metric_table).table
-            log_str += f"\nTotal loss {loss.item()}"
+                # Determine approximate time left for epoch
+                epoch_batches_left = len(dataloader) - (batch_i + 1)
+                time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
+                log_str += f"\n---- ETA {time_left}"
 
-            # Determine approximate time left for epoch
-            epoch_batches_left = len(dataloader) - (batch_i + 1)
-            time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
-            log_str += f"\n---- ETA {time_left}"
-
-            print(log_str)
+                print(log_str)
 
             model.seen += imgs.size(0)
 
@@ -157,7 +168,7 @@ if __name__ == "__main__":
                 conf_thres=0.5,
                 nms_thres=0.5,
                 img_size=opt.img_size,
-                batch_size=8,
+                batch_size=opt.batch_size,
             )
             evaluation_metrics = [
                 ("val_precision", precision.mean()),
@@ -175,4 +186,4 @@ if __name__ == "__main__":
             print(f"---- mAP {AP.mean()}")
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
+            torch.save(model.state_dict(), f"{opt.checkpoints}/yolov3_ckpt_%d.pth" % epoch)

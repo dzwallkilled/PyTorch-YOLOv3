@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="562ad499-30e4-437a-bea7-cd0e5a4d2d79" name="TUFX" url="http://amrl-tufx299.cs.uow.edu.au">
+        <fileTransfer host="amrl-tufx299.cs.uow.edu.au" port="22" rootFolder="/home/zd027" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

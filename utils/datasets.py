@@ -240,6 +240,10 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         # ---------
 
         bboxes = torch.from_numpy(np.array([ann['bbox'] for ann in anno]))
+        bboxes[:, 0] /= w_factor
+        bboxes[:, 1] /= h_factor
+        bboxes[:, 2] /= w_factor
+        bboxes[:, 3] /= h_factor
         # Extract coordinates for unpadded + unscaled image
         x1 = bboxes[:, 0]
         y1 = bboxes[:, 1]
@@ -265,8 +269,9 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
             if np.random.random() < 0.5:
                 img, targets = horisontal_flip(img, targets)
 
-        img_id = self.id_to_img_map[index]
-        return self.coco.imgs[img_id]['file_name'], img, targets
+        img_id = self.ids[index]
+        return img_id, img, targets
+        # return self.coco.imgs[img_id]['file_name'], img, targets
 
     def collate_fn(self, batch):
         paths, imgs, targets = list(zip(*batch))
@@ -285,7 +290,7 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         return paths, imgs, targets
 
     def get_img_info(self, index):
-        img_id = self.id_to_img_map[index]
+        img_id = self.ids[index]
         img_data = self.coco.imgs[img_id]
         return img_data
 

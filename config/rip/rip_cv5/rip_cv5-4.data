@@ -1,6 +1,6 @@
 classes=6
-train=/data2/data2/zewei/data/RipData/cv_5_folder/train_4.json
-valid=/data2/data2/zewei/data/RipData/cv_5_folder/val_4.json
+train=/data2/data2/zewei/data/RipData/COCOJSONs/full/cv_5_fold/train_4.json
+valid=/data2/data2/zewei/data/RipData/COCOJSONs/full/cv_5_fold/val_4.json
 backup=backup/
 names=data/rip/rip.names
 root=/data2/data2/zewei/data/RipData/RipTrainingAllData/

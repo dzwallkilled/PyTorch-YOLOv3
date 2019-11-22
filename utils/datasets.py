@@ -199,7 +199,7 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         self.categories = {cat['id']: cat['name'] for cat in self.coco.cats.values()}
 
         self.json_category_id_to_contiguous_id = {
-            v: i + 1 for i, v in enumerate(self.coco.getCatIds())
+            v: i for i, v in enumerate(self.coco.getCatIds())
         }
         self.contiguous_category_id_to_json_id = {
             v: k for k, v in self.json_category_id_to_contiguous_id.items()
@@ -240,13 +240,9 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         # ---------
 
         bboxes = torch.from_numpy(np.array([ann['bbox'] for ann in anno]))
-        bboxes[:, 0] /= w_factor
-        bboxes[:, 1] /= h_factor
-        bboxes[:, 2] /= w_factor
-        bboxes[:, 3] /= h_factor
         # Extract coordinates for unpadded + unscaled image
-        x1 = bboxes[:, 0]
-        y1 = bboxes[:, 1]
+        x1 = bboxes[:, 0].clone()
+        y1 = bboxes[:, 1].clone()
         x2 = bboxes[:, 0] + bboxes[:, 2]
         y2 = bboxes[:, 1] + bboxes[:, 3]
         # Adjust for added padding
@@ -257,11 +253,11 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         # Returns (x, y, w, h)
         bboxes[:, 0] = ((x1 + x2) / 2) / padded_w
         bboxes[:, 1] = ((y1 + y2) / 2) / padded_h
-        bboxes[:, 2] = bboxes[:, 2] * w_factor / padded_w
-        bboxes[:, 3] = bboxes[:, 3] * h_factor / padded_h
+        bboxes[:, 2] = bboxes[:, 2] / padded_w
+        bboxes[:, 3] = bboxes[:, 3] / padded_h
 
         targets = torch.zeros((len(bboxes), 6))
-        targets[:, 1] = torch.from_numpy(np.array([ann['category_id'] for ann in anno]))
+        targets[:, 1] = torch.from_numpy(np.array([self.json_category_id_to_contiguous_id[ann['category_id']] for ann in anno]))
         targets[:, 2:] = bboxes
 
         # Apply augmentations

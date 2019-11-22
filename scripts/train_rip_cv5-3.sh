@@ -2,10 +2,11 @@
 
 export PYTHONPATH="$(pwd)"
 
+level=full
 fold=3
 
 name="rip_cv5-$fold"
-dirname="/data2/data2/zewei/exp/RipData/YOLOv3/CV5-$fold"
+dirname="/data2/data2/zewei/exp/RipData/YOLOv3/$level/CV5-$fold"
 
 echo $name
 echo "output" $dirname
@@ -24,5 +25,5 @@ python -u train.py \
   --model_def config/rip/yolov3-rip.cfg \
   --pretrained_weights weights/yolov3.weights \
   --output $dirname \
-  2>&1 | tee -a /data2/data2/zewei/exp/RipData/YOLOv3/CV5-$fold/$name.log \
+  2>&1 | tee -a $dirname/$name.log \
   "$@"

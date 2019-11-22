@@ -2,11 +2,11 @@
 
 export PYTHONPATH="$(pwd)"
 
-level=full
-fold=5
+fold=1
+level='level2'
 
-name="rip_cv5-$fold"
-dirname="/data2/data2/zewei/exp/RipData/YOLOv3/$level/CV5-$fold"
+name="rip_$level"
+dirname="/data2/data2/zewei/exp/RipData/YOLOv3/patches/$level/CV5-$fold"
 
 echo $name
 echo "output" $dirname
@@ -21,8 +21,8 @@ else
 fi
 
 python -u train.py \
-  --data_config config/rip/rip_cv5/$name.data \
-  --model_def config/rip/yolov3-rip.cfg \
+  --data_config config/rip/rip_patches/$name.data \
+  --model_def config/rip/yolov3-rip-$level.cfg \
   --pretrained_weights weights/yolov3.weights \
   --output $dirname \
   2>&1 | tee -a $dirname/$name.log \

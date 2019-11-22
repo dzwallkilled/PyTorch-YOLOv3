@@ -353,8 +353,8 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
     # obj_mask[b, best_n, gj, gi] = 1
     # noobj_mask[b, best_n, gj, gi] = 0
     ## replacing above codes to avoid cuda trigged error
-    gi = torch.clamp(gi, 0, noobj_mask.size()[2] - 1)
-    gj = torch.clamp(gj, 0, noobj_mask.size()[3] - 1)
+    gj = torch.clamp(gj, 0, noobj_mask.size(2) - 1)
+    gi = torch.clamp(gi, 0, noobj_mask.size(3) - 1)
     obj_mask[b, best_n, gj, gi] = 1
     noobj_mask[b, best_n, gj, gi] = 0
 

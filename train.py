@@ -6,6 +6,7 @@ from utils.utils import *
 from utils.datasets import *
 from utils.parse_config import *
 from test import evaluate
+from test_coco import evaluate_coco
 
 from terminaltables import AsciiTable
 
@@ -26,13 +27,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpus", type=int, default=1, help="the num of GPUs to be used")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="size of each image batch")
+    parser.add_argument("--batch_size", type=int, default=4, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
-    parser.add_argument("--model_def", type=str, default="config/rip/yolov3-rip.cfg", help="path to model definition file")
-    parser.add_argument("--data_config", type=str, default="config/rip/rip_cv5/rip_cv5-1.data", help="path to data config file")
+    parser.add_argument("--model_def", type=str, default="config/rip/yolov3-rip-level1.cfg", help="path to model definition file")
+    parser.add_argument("--data_config", type=str, default="config/rip/rip_patches/rip_level1.data", help="path to data config file")
     parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
+    parser.add_argument("--img_size", type=int, default=800, help="size of each image dimension")
     parser.add_argument("--print_freq", type=int, default=10, help="print frequency")
     parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=10, help="interval evaluations on validation set")
@@ -49,7 +50,10 @@ if __name__ == "__main__":
     os.makedirs(opt.logs, exist_ok=True)
 
     logger = Logger(opt.logs)
+    if opt.gpus > 1:
+        raise NotImplementedError('multiple GPUs not supported yet.')
     device = get_available_device(opt.gpus)
+    # device = get_available_device(0)
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
@@ -60,6 +64,7 @@ if __name__ == "__main__":
     # Get dataloader
     if 'rip' in opt.data_config:
         dataset = JSONDataset(data_root, train_path, remove_images_without_annotations=True,
+                              img_size=opt.img_size,
                               augment=True, multiscale=opt.multiscale_training)
     else:
         dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
@@ -84,7 +89,11 @@ if __name__ == "__main__":
         else:
             model.load_darknet_weights(opt.pretrained_weights)
 
-    optimizer = torch.optim.Adam(model.parameters())
+    if opt.gpus > 1:
+        model = nn.DataParallel(model)
+        optimizer = torch.optim.Adam(model.module.parameters())
+    else:
+        optimizer = torch.optim.Adam(model.parameters())
 
     metrics = [
         "grid_size",
@@ -112,7 +121,7 @@ if __name__ == "__main__":
             imgs = Variable(imgs.to(device))
             targets = Variable(targets.to(device), requires_grad=False)
 
-            loss, outputs = model(imgs, targets)
+            loss, _ = model(imgs, targets)
             loss.backward()
 
             if batches_done % opt.gradient_accumulations:
@@ -126,20 +135,20 @@ if __name__ == "__main__":
             if (batch_i % opt.print_freq == 0 and batch_i != 0) \
                     or batch_i == len(dataloader) - 1:
                 log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
-
-                metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
+                yolo_layers = model.module.yolo_layers if opt.gpus > 1 else model.yolo_layers
+                metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(yolo_layers))]]]
 
                 # Log metrics at each YOLO layer
                 for i, metric in enumerate(metrics):
                     formats = {m: "%.6f" for m in metrics}
                     formats["grid_size"] = "%2d"
                     formats["cls_acc"] = "%.2f%%"
-                    row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                    row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in yolo_layers]
                     metric_table += [[metric, *row_metrics]]
 
                     # Tensorboard logging
                     tensorboard_log = []
-                    for j, yolo in enumerate(model.yolo_layers):
+                    for j, yolo in enumerate(yolo_layers):
                         for name, metric in yolo.metrics.items():
                             if name != "grid_size":
                                 tensorboard_log += [(f"{name}_{j + 1}", metric)]
@@ -156,10 +165,24 @@ if __name__ == "__main__":
 
                 print(log_str)
 
-            model.seen += imgs.size(0)
+            if opt.gpus > 1:
+                model.module.seen += imgs.size(0)
+            else:
+                model.seen += imgs.size(0)
 
         if epoch % opt.evaluation_interval == 0 or epoch == opt.epochs:
             print("\n---- Evaluating Model ----")
+            evaluate_coco(
+                model,
+                path=valid_path,
+                iou_thres=0.5,
+                conf_thres=0.5,
+                nms_thres=0.5,
+                img_size=opt.img_size,
+                batch_size=opt.batch_size,
+                device=device
+            )
+
             # Evaluate the model on the validation set
             precision, recall, AP, f1, ap_class = evaluate(
                 model,
@@ -186,4 +209,7 @@ if __name__ == "__main__":
             print(f"---- mAP {AP.mean()}")
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"{opt.checkpoints}/yolov3_ckpt_%d.pth" % epoch)
+            if opt.gpus > 1:
+                torch.save(model.module.state_dict(), f"{opt.checkpoints}/yolov3_ckpt_%d.pth" % epoch)
+            else:
+                torch.save(model.state_dict(), f"{opt.checkpoints}/yolov3_ckpt_%d.pth" % epoch)

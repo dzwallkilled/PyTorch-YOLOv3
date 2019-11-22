@@ -1,0 +1,6 @@
+classes=2
+train=/data2/data2/zewei/data/RipData/COCOJSONPatches/level2/cv_5_fold/train_1.json
+valid=/data2/data2/zewei/data/RipData/COCOJSONPatches/level2/cv_5_fold/val_1.json
+backup=backup/
+names=data/rip/rip_level2.names
+root=/data2/data2/zewei/data/RipData/RipTrainingAllData/

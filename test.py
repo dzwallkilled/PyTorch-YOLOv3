@@ -66,20 +66,24 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
-    parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
-    parser.add_argument("--data_config", type=str, default="config/rip.data", help="path to data config file")
-    parser.add_argument("--weights_path", type=str, default="weights/yolov3.weights", help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="data/rip.names", help="path to class label file")
+    parser.add_argument("--model_def", type=str, default="config/rip/rip_model/yolov3-rip-level2-detect.cfg",
+                        help="path to model definition file")
+    parser.add_argument("--data_config", type=str, default=f"config/rip/rip_data_patches/rip_level2.data",
+                        help="path to data config file")
+    parser.add_argument("--weights_path", type=str,
+                        default=f"/home/zd027/exp/RipData/YOLOv3/patches/level2/CV5-1/checkpoints/yolov3_ckpt_20.pth",
+                        help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="data/rip/rip_level2.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.001, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=16, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
-    parser.add_argument("--gpu", type=str, default="0", help="the GPUs to be used")
+    parser.add_argument("--img_size", type=int, default=800, help="size of each image dimension")
+    parser.add_argument("--gpus", type=int, default=1, help="the GPUs to be used")
     opt = parser.parse_args()
     print(opt)
 
-    device = get_available_device(opt.gpu)
+    device = get_available_device(opt.gpus)
 
     data_config = parse_data_config(opt.data_config)
     valid_path = data_config["valid"]

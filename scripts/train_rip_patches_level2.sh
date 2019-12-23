@@ -21,9 +21,9 @@ else
 fi
 
 python -u train.py \
-  --data_config config/rip/rip_patches/$name.data \
-  --model_def config/rip/yolov3-rip-$level.cfg \
+  --data_config config/rip/rip_data_patches/$name.data \
+  --model_def config/rip/rip_model/yolov3-rip-$level.cfg \
   --pretrained_weights weights/yolov3.weights \
   --output $dirname \
-  2>&1 | tee -a $dirname/$name.log \
-  "$@"
+  "$@" \
+  2>&1 | tee -a $dirname/$name.log

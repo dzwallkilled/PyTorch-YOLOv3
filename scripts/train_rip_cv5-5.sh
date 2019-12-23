@@ -21,7 +21,7 @@ else
 fi
 
 python -u train.py \
-  --data_config config/rip/rip_cv5/$name.data \
+  --data_config config/rip/rip_data_cv5/$name.data \
   --model_def config/rip/yolov3-rip.cfg \
   --pretrained_weights weights/yolov3.weights \
   --output $dirname \

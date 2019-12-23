@@ -239,7 +239,7 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         #  Label
         # ---------
 
-        bboxes = torch.from_numpy(np.array([ann['bbox'] for ann in anno]))
+        bboxes = torch.from_numpy(np.array([ann['bbox'] for ann in anno]).astype(np.float))
         # Extract coordinates for unpadded + unscaled image
         x1 = bboxes[:, 0].clone()
         y1 = bboxes[:, 1].clone()
@@ -251,10 +251,10 @@ class JSONDataset(torchvision.datasets.coco.CocoDetection):
         x2 += pad[1]
         y2 += pad[3]
         # Returns (x, y, w, h)
-        bboxes[:, 0] = ((x1 + x2) / 2) / padded_w
-        bboxes[:, 1] = ((y1 + y2) / 2) / padded_h
-        bboxes[:, 2] = bboxes[:, 2] / padded_w
-        bboxes[:, 3] = bboxes[:, 3] / padded_h
+        bboxes[:, 0] = ((x1 + x2) / 2.) / padded_w
+        bboxes[:, 1] = ((y1 + y2) / 2.) / padded_h
+        bboxes[:, 2] = bboxes[:, 2] * 1. / padded_w
+        bboxes[:, 3] = bboxes[:, 3] * 1. / padded_h
 
         targets = torch.zeros((len(bboxes), 6))
         targets[:, 1] = torch.from_numpy(np.array([self.json_category_id_to_contiguous_id[ann['category_id']] for ann in anno]))

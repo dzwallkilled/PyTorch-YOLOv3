@@ -39,7 +39,7 @@ def evaluate_coco(model, path, iou_thres, conf_thres, nms_thres, img_size, batch
             outputs = to_cpu(outputs)
             outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
 
-        predicts += get_batch_statistics_coco(outputs, img_ids)
+        predicts += get_batch_statistics_coco(outputs, img_ids, size=img_size)
         pass
 
     pred_file = 'results.json'
@@ -100,20 +100,20 @@ def do_coco_evaluation(gt_file, pred_file):
 if __name__ == "__main__":
     k = 1
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
-    parser.add_argument("--model_def", type=str, default="config/rip/yolov3-rip-detect.cfg",
+    parser.add_argument("--batch_size", type=int, default=16, help="size of each image batch")
+    parser.add_argument("--model_def", type=str, default="config/rip/rip_model/yolov3-rip-level2-detect.cfg",
                         help="path to model definition file")
-    parser.add_argument("--data_config", type=str, default=f"config/rip/rip_cv5/rip_cv5-{k}.data",
+    parser.add_argument("--data_config", type=str, default=f"config/rip/rip_data_patches/rip_level2.data",
                         help="path to data config file")
     parser.add_argument("--weights_path", type=str,
-                        default=f"/home/zd027/exp/RipData/YOLOv3/CV5-{k}/checkpoints/yolov3_ckpt_100.pth",
+                        default=f"/home/zd027/exp/RipData/YOLOv3/patches/level2/CV5-1/checkpoints/yolov3_ckpt_20.pth",
                         help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="data/rip/rip.names", help="path to class label file")
+    parser.add_argument("--class_path", type=str, default="data/rip/rip_level2.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.01, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.3, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=16, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
+    parser.add_argument("--img_size", type=int, default=800, help="size of each image dimension")
     parser.add_argument("--gpus", type=int, default=1, help="the num of GPUs to be used")
     opt = parser.parse_args()
     print(opt)
@@ -144,5 +144,6 @@ if __name__ == "__main__":
         nms_thres=opt.nms_thres,
         img_size=opt.img_size,
         batch_size=8,
+        device=device
     )
 

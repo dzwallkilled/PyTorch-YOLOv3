@@ -108,6 +108,116 @@ def detect_dataloader(model, dataloader, opt):
     return imgs, img_detections
 
 
+def detect_patches(model, patch, opt):
+    import cv2
+    transforms = Compose([
+        ToTensor(),
+        # Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+    ])
+
+    imgs = []
+    for k, p in patch.items():
+        imgs.append(transforms(p.image))
+    img = torch.stack(imgs, dim=0).cuda()
+    with torch.no_grad():
+        detections = model(img)
+        detections = to_cpu(detections)
+        detections = non_max_suppression(detections, opt.conf_thres, opt.nms_thres)
+
+    detections = assemble_patches(detections, opt.patch_size, opt.patch_stride, type='xyxy')
+    detections = torch.cat([d for d in detections if d is not None])
+    detections = detections.view(1, -1, 7)
+    detections[..., :4] = xyxy2xywh(detections[..., :4])
+    detections = non_max_suppression(detections, opt.conf_thres, opt.nms_thres)
+    return detections
+
+
+def xyxy2xywh(x):
+    y = x.new(x.shape)
+    y[..., 0] = (x[..., 0] + x[..., 2]) / 2
+    y[..., 1] = (x[..., 1] + x[..., 3]) / 2
+    y[..., 2] = x[..., 2] - x[..., 0]
+    y[..., 3] = x[..., 3] - x[..., 1]
+    return y
+
+def assemble_patches(bboxes, patch_size, stride, image_size=(1080, 1920), type='xyxy'):
+    # num_rows = math.ceil((image_size[0] - patch_size[0]) / stride[0]) + 1
+    num_cols = math.ceil((image_size[1] - patch_size[1]) / stride[1]) + 1
+    if type == 'xyxy':
+        for patch_cnt, patch_bboxes in enumerate(bboxes):
+            if patch_bboxes is not None:
+                top_left_x = (patch_cnt % num_cols) * stride[1]
+                top_left_y = (patch_cnt // num_cols) * stride[0]
+                bboxes[patch_cnt][:, 0] += top_left_x
+                bboxes[patch_cnt][:, 1] += top_left_y
+                bboxes[patch_cnt][:, 2] += top_left_x
+                bboxes[patch_cnt][:, 3] += top_left_y
+
+    elif type == 'xywh':
+        for patch_cnt, patch_bboxes in enumerate(bboxes):
+            if patch_bboxes is not None:
+                top_left_x = (patch_cnt % num_cols) * stride[1]
+                top_left_y = (patch_cnt // num_cols) * stride[0]
+                bboxes[patch_cnt][:, 0] += top_left_x
+                bboxes[patch_cnt][:, 1] += top_left_y
+    else:
+        raise NotImplementedError(f'{type} not implemented.')
+
+    return bboxes
+
+
+def draw_result(image, prediction, out_file, colors=None):
+    if colors is None:
+        # Bounding-box colors
+        cmap = plt.get_cmap("tab20b")
+        colors = [cmap(i) for i in np.linspace(0, 1, 5)]
+
+    # Create plot
+    img = image
+    plt.figure()
+    fig, ax = plt.subplots(1)
+    ax.imshow(img)
+
+    # Draw bounding boxes and labels of detections
+    if prediction is not None:
+        detections = prediction
+        detections[detections < 0] = 0
+        # Rescale boxes to original image
+        # detections = rescale_boxes(detections, opt.img_size, img.shape[:2])
+        unique_labels = detections[:, -1].cpu().unique()
+        # n_cls_preds = len(unique_labels)
+        # bbox_colors = random.sample(colors, n_cls_preds)
+        # bbox_colors = colors[unique_labels]
+        for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
+            box_w = x2 - x1
+            box_h = y2 - y1
+            print("\t+ Label: %s, Conf: %.5f, [%d %d %d %d]" %
+                  (classes[int(cls_pred)], cls_conf.item(), x1, y1, box_w, box_h))
+
+            color = colors[int(np.where(unique_labels == int(cls_pred))[0])]
+            # Create a Rectangle patch
+            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=1, edgecolor=color, facecolor="none")
+            # Add the bbox to the plot
+            ax.add_patch(bbox)
+            # Add label
+            plt.text(
+                x1,
+                y1,
+                s=classes[int(cls_pred)],
+                color="white",
+                verticalalignment="top",
+                bbox={"color": color, "pad": 0},
+                size=5,
+            )
+
+    # Save generated image with detections
+    plt.axis("off")
+    plt.gca().xaxis.set_major_locator(NullLocator())
+    plt.gca().yaxis.set_major_locator(NullLocator())
+    plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0)
+    plt.close()
+
+
 def detect_images(model, images, opt, output_root=''):
     import cv2
 
@@ -116,10 +226,6 @@ def detect_images(model, images, opt, output_root=''):
         # Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
     ])
 
-    # Bounding-box colors
-    cmap = plt.get_cmap("tab20b")
-    colors = [cmap(i) for i in np.linspace(0, 1, 5)]
-
     prev_time = time.time()
     for img_id, img_file in enumerate(images):
         name, ext = img_file.split('.')
@@ -127,6 +233,9 @@ def detect_images(model, images, opt, output_root=''):
         img_cv = cv2.imread(img_file)[:, :, ::-1]
         img_patches = decompose_image(img_cv, None, (800, 800), (300, 700))
         print(f'Decompose input image into {len(img_patches)} patches.')
+        detections = detect_patches(model, img_patches, opt)
+        draw_result(img_cv, detections[0], os.path.join(output_root, name+f'_patches.'+ext))
+
         for i, patch in img_patches.items():
             img = transforms(patch.image)
             img = torch.stack([img], dim=0).cuda()
@@ -144,50 +253,7 @@ def detect_images(model, images, opt, output_root=''):
             prev_time = current_time
             print("\t+ Patch %d, Inference Time: %s" % (i, inference_time))
 
-            # Create plot
-            img = patch.image
-            plt.figure()
-            fig, ax = plt.subplots(1)
-            ax.imshow(img)
-
-            # Draw bounding boxes and labels of detections
-            if detections[0] is not None:
-                detections = detections[0]
-                detections[detections < 0] = 0
-                # Rescale boxes to original image
-                detections = rescale_boxes(detections, opt.img_size, img.shape[:2])
-                unique_labels = detections[:, -1].cpu().unique()
-                # n_cls_preds = len(unique_labels)
-                # bbox_colors = random.sample(colors, n_cls_preds)
-                # bbox_colors = colors[unique_labels]
-                for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
-                    box_w = x2 - x1
-                    box_h = y2 - y1
-                    print("\t+ Label: %s, Conf: %.5f, [%d %d %d %d]" %
-                          (classes[int(cls_pred)], cls_conf.item(), x1, y1, box_w, box_h))
-
-                    color = colors[int(np.where(unique_labels == int(cls_pred))[0])]
-                    # Create a Rectangle patch
-                    bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=1, edgecolor=color, facecolor="none")
-                    # Add the bbox to the plot
-                    ax.add_patch(bbox)
-                    # Add label
-                    plt.text(
-                        x1,
-                        y1,
-                        s=classes[int(cls_pred)],
-                        color="white",
-                        verticalalignment="top",
-                        bbox={"color": color, "pad": 0},
-                        size=5,
-                    )
-
-            # Save generated image with detections
-            plt.axis("off")
-            plt.gca().xaxis.set_major_locator(NullLocator())
-            plt.gca().yaxis.set_major_locator(NullLocator())
-            plt.savefig(out_file, bbox_inches="tight", pad_inches=0.0)
-            plt.close()
+            draw_result(patch.image, detections[0], out_file)
 
 
 if __name__ == "__main__":
@@ -199,6 +265,8 @@ if __name__ == "__main__":
     parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.3, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+    parser.add_argument("--patch_size", type=tuple, default=(800, 800))
+    parser.add_argument("--patch_stride", type=tuple, default=(300, 700))
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=800, help="size of each image dimension")
     parser.add_argument("--checkpoint_model", type=str, help="path to checkpoint model")

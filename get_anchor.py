@@ -125,10 +125,10 @@ def main(args):
 
 if "__main__" == __name__:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--file_list', type=str, default='rip_data_train.json')
+    parser.add_argument('--file_list', type=str, default='COCOJSONPatches_v1/level3/cv_5_fold/train_1.json')
     parser.add_argument('--root', type=str, default='/data2/data2/zewei/data/RipData')
     parser.add_argument('--num_clusters', '-n', default=9, type=int, help='Number of Clusters')
-    parser.add_argument('--output', '-o', default='config/anchor.txt', type=str, help='Result Output File')
+    parser.add_argument('--output', '-o', default='config/anchor_patches_level3.txt', type=str, help='Result Output File')
     parser.add_argument('--tol', '-t', default=0.005, type=float, help='Tolerate')
     parser.add_argument('--engine', '-m', default='sklearn', type=str,
                         choices=['original', 'sklearn', 'sklearn-mini'], help='Method to use')

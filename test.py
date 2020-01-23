@@ -26,7 +26,7 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
     # Get dataloader
     if 'rip' in path.lower():
         dataset = JSONDataset('/data2/data2/zewei/data/RipData/RipTrainingAllData', path, True,
-                              augment=False, multiscale=False)
+                              augment=False, multiscale=True)
     else:
         dataset = ListDataset(path, img_size=img_size, augment=False, multiscale=False)
     dataloader = torch.utils.data.DataLoader(
@@ -66,14 +66,14 @@ def evaluate(model, path, iou_thres, conf_thres, nms_thres, img_size, batch_size
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
-    parser.add_argument("--model_def", type=str, default="config/rip/rip_model/yolov3-rip-level2-detect.cfg",
+    parser.add_argument("--model_def", type=str, default="config/rip/rip_model/yolov3-rip-level1-detect.cfg",
                         help="path to model definition file")
-    parser.add_argument("--data_config", type=str, default=f"config/rip/rip_data_patches/rip_level2.data",
+    parser.add_argument("--data_config", type=str, default=f"config/rip/rip_data_patches/rip_level1.data",
                         help="path to data config file")
     parser.add_argument("--weights_path", type=str,
-                        default=f"/home/zd027/exp/RipData/YOLOv3/patches/level2/CV5-1/checkpoints/yolov3_ckpt_20.pth",
+                        default=f"/home/zd027/exp/RipData/YOLOv3/patches_v1/level1/CV5-1/checkpoints/yolov3_ckpt_100.pth",
                         help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="data/rip/rip_level2.names", help="path to class label file")
+    parser.add_argument("--class_path", type=str, default="data/rip/rip_level1.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.001, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")

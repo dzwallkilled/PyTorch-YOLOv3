@@ -39,7 +39,7 @@ def evaluate_coco(model, path, iou_thres, conf_thres, nms_thres, img_size, batch
             outputs = to_cpu(outputs)
             outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
 
-        predicts += get_batch_statistics_coco(outputs, img_ids, size=img_size)
+        predicts += get_batch_statistics_coco(outputs, img_ids, size=img_size, id_mapping=dataset.contiguous_category_id_to_json_id)
         pass
 
     pred_file = 'results.json'
@@ -58,7 +58,7 @@ def xyxy2coco(x):
     return y
 
 
-def get_batch_statistics_coco(outputs, img_ids, size=800, ori_size=(800, 800)):
+def get_batch_statistics_coco(outputs, img_ids, size=800, ori_size=(800, 800), id_mapping=None):
     """ Compute true positives, predicted scores and predicted labels per sample """
     predicts = []
     for sample_i in range(len(outputs)):
@@ -70,11 +70,11 @@ def get_batch_statistics_coco(outputs, img_ids, size=800, ori_size=(800, 800)):
         pred_boxes = rescale_boxes(output[:, :4], size, ori_size)
         pred_boxes = xyxy2coco(pred_boxes)
         pred_scores = output[:, 4]
-        pred_labels = output[:, -1]
+        pred_labels = [id_mapping[d.item()] for d in output[:, -1]]
 
         for pred_i, (pred_box, pred_label, pred_score) in enumerate(zip(pred_boxes, pred_labels, pred_scores)):
             predicts.append({'image_id': image_id,
-                             'category_id': int(pred_label.item()),
+                             'category_id': pred_label,
                              'bbox': pred_box.tolist(),
                              'score': pred_score.item()})
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_config", type=str, default=f"config/rip/rip_data_patches/rip_level2.data",
                         help="path to data config file")
     parser.add_argument("--weights_path", type=str,
-                        default=f"/home/zd027/exp/RipData/YOLOv3/patches/level2/CV5-1/checkpoints/yolov3_ckpt_20.pth",
+                        default=f"/home/zd027/exp/RipData/YOLOv3/patches_v1/level2/CV5-1/checkpoints/yolov3_ckpt_100.pth",
                         help="path to weights file")
     parser.add_argument("--class_path", type=str, default="data/rip/rip_level2.names", help="path to class label file")
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
